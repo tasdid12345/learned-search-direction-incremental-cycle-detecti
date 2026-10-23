@@ -1,0 +1,33 @@
+{
+  "question": "Can a LightGBM model that picks the cheaper search direction from graph-degree features cut the arcs traversed by exact incremental cycle detection on a real arc-insertion stream, compared with a balanced bidirectional search?",
+  "method": "cit-HepTh arcs inserted in node-id order; every K-th insertion (u,v) queries whether v reaches u. Chronological 60/40 query split. LightGBM regressor (CV-tuned on train) predicts which side has the cheaper exact one-sided search; compared with balanced bidirectional search.",
+  "dataset": {
+    "name": "SNAP cit-HepTh",
+    "source_url": "https://snap.stanford.edu/data/cit-HepTh.txt.gz",
+    "downloaded_from": "https://web.archive.org/web/2023id_/https://snap.stanford.edu/data/cit-HepTh.txt.gz",
+    "n_rows": 352768,
+    "n_train": 10583,
+    "n_test": 7056,
+    "same_as_paper": false,
+    "baseline_is_papers_method": false
+  },
+  "metric_name": "total arcs traversed over test queries",
+  "higher_is_better": false,
+  "baseline": "Balanced bidirectional search (alternating one arc forward from v and backward from u; simplified stand-in, not the paper's algorithm).",
+  "improved": "LightGBM regressor on degree/2-hop/graph-size features picks one side; only that exact one-sided search is run.",
+  "metrics": {
+    "baseline_score": 173617401.0,
+    "improved_score": 161775713.0,
+    "improvement": 11841688.0,
+    "baseline_score_std": 0.0,
+    "improved_score_std": 318224.0521844109,
+    "baseline_mean_arcs_per_query": 24605.64073129252,
+    "improved_mean_arcs_per_query": 22927.39696712018,
+    "improved_cheaper_side_share": 0.815098261526833,
+    "oracle_total_arcs": 126901615.0,
+    "always_forward_total_arcs": 197933138.0,
+    "always_backward_total_arcs": 286971683.0,
+    "test_cycle_share": 0.11196145124716553
+  },
+  "notes": "Arcs are citing->cited, so the stream is almost a DAG and one search side is often empty; this limits the room for any method. Train labels cap each one-sided search at 20000 arcs; test costs are exact. Both one-sided costs are computed per query on the evolving graph, so the improved cost is the cost of the chosen side. Baseline is deterministic (std 0); improved varies with LightGBM subsampling seeds 42-44. Answers verified identical. cit-HepTh is a citation graph used as a stand-in for dependency graphs. Data file was fetched from: https://web.archive.org/web/2023id_/https://snap.stanford.edu/data/cit-HepTh.txt.gz (same SNAP file; fallback mirrors are used only if the official host is unreachable)."
+}
