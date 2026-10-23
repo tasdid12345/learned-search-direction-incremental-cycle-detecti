@@ -8,6 +8,29 @@ Method: every 20th insertion (u, v) is a query "does v reach u?". Chronological 
 
 Run: `pip install -r requirements.txt && python analysis.py`
 
+## Results (latest run)
+
+On the SNAP cit-HepTh arc-insertion stream, total arcs traversed over 7056 test queries fell from 173617401 for a standard balanced bidirectional search to 161775713 for the LightGBM-chosen one-sided search, a small gain.
+
+| Metric | Value |
+|---|---|
+| baseline_score | 173617401 |
+| improved_score | 161775713 |
+| improvement | 11841688 |
+| baseline_score_std | 0 |
+| improved_score_std | 318200 |
+| baseline_mean_arcs_per_query | 24610 |
+| improved_mean_arcs_per_query | 22930 |
+| improved_cheaper_side_share | 0.8151 |
+| oracle_total_arcs | 126901615 |
+| always_forward_total_arcs | 197933138 |
+| always_backward_total_arcs | 286971683 |
+| test_cycle_share | 0.112 |
+
+Run on 2026-10-23. Full output: [results.json](results.json) · [run.log](run.log)
+
+Notes: Arcs are citing->cited, so the stream is almost a DAG and one search side is often empty; this limits the room for any method. Train labels cap each one-sided search at 20000 arcs; test costs are exact. Both one-sided costs are computed per query on the evolving graph, so the improved cost is the cost of the chosen side. Baseline is deterministic (std 0); improved varies with LightGBM subsampling seeds 42-44. Answers verified identical. cit-HepTh is a citation graph used as a stand-in for dependency graphs. Data file was fetched from: https://web.archive.org/web/2023id_/https://snap.stanford.edu/data/cit-HepTh.txt.gz (same SNAP file; fallback mirrors are used only if the official host is unreachable).
+
 ## Reference
 
 This project is motivated by the following paper:
