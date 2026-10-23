@@ -7,21 +7,45 @@ from sklearn.model_selection import GridSearchCV, TimeSeriesSplit
 
 SEED, K, CAP = 42, 20, 20000   # every K-th insertion is a query; CAP only limits TRAIN labels
 URL = "https://snap.stanford.edu/data/cit-HepTh.txt.gz"
+# Same file, tried in order: official https, official http, Internet Archive snapshots of the official URL.
+MIRRORS = [
+    URL,
+    "http://snap.stanford.edu/data/cit-HepTh.txt.gz",
+    "https://web.archive.org/web/2023id_/https://snap.stanford.edu/data/cit-HepTh.txt.gz",
+    "https://web.archive.org/web/2020id_/http://snap.stanford.edu/data/cit-HepTh.txt.gz",
+]
+LOCAL = "cit-HepTh.txt.gz"
 np.random.seed(SEED)
 
-def download(url):
-    for i in range(5):  # retry with backoff on 429/5xx
-        try:
-            r = requests.get(url, timeout=60)
-            if r.status_code == 429 or r.status_code >= 500:
-                raise requests.HTTPError(str(r.status_code))
-            r.raise_for_status()
-            return r.content
-        except requests.RequestException as e:
-            print("download retry", i, e); time.sleep(2 ** i)
-    sys.exit("download failed")
+def download():
+    """Return raw gzip bytes of the real cit-HepTh file; never fabricates data."""
+    if os.path.exists(LOCAL):
+        with open(LOCAL, "rb") as f:
+            b = f.read()
+        if b[:2] == b"\x1f\x8b":
+            return b, "local cache"
+    for url in MIRRORS:
+        for i in range(2):  # short retry with backoff on 429/5xx/timeouts
+            try:
+                r = requests.get(url, timeout=(15, 120))
+                if r.status_code == 429 or r.status_code >= 500:
+                    raise requests.HTTPError(str(r.status_code))
+                r.raise_for_status()
+                if r.content[:2] != b"\x1f\x8b":
+                    raise ValueError("response is not a gzip file")
+                gzip.decompress(r.content)  # validate full integrity
+                try:
+                    with open(LOCAL, "wb") as f: f.write(r.content)
+                except OSError:
+                    pass
+                return r.content, url
+            except (requests.RequestException, ValueError, OSError, EOFError) as e:
+                print("download retry", url, i, repr(e)[:200]); time.sleep(2 ** i)
+    sys.exit("download failed: dataset unreachable from all sources")
 
-raw = gzip.decompress(download(URL))
+content, SRC = download()
+print("data source:", SRC)
+raw = gzip.decompress(content)
 df = pd.read_csv(io.BytesIO(raw), sep=r"\s+", comment="#", names=["u", "v"], dtype="int64")
 df = df[df.u != df.v].drop_duplicates().sort_values(["u", "v"])  # node-id order stream
 arcs = list(zip(df.u.tolist(), df.v.tolist()))
@@ -110,7 +134,7 @@ always_f, always_b = int(te.cf.sum()), int(te.cb.sum())
 res = {
     "question": "Can a LightGBM model that picks the cheaper search direction from graph-degree features cut the arcs traversed by exact incremental cycle detection on a real arc-insertion stream, compared with a balanced bidirectional search?",
     "method": "cit-HepTh arcs inserted in node-id order; every K-th insertion (u,v) queries whether v reaches u. Chronological 60/40 query split. LightGBM regressor (CV-tuned on train) predicts which side has the cheaper exact one-sided search; compared with balanced bidirectional search.",
-    "dataset": {"name": "SNAP cit-HepTh", "source_url": URL, "n_rows": len(arcs),
+    "dataset": {"name": "SNAP cit-HepTh", "source_url": URL, "downloaded_from": SRC, "n_rows": len(arcs),
                 "n_train": len(tr), "n_test": len(te), "same_as_paper": False,
                 "baseline_is_papers_method": False},
     "metric_name": "total arcs traversed over test queries", "higher_is_better": False,
@@ -129,7 +153,8 @@ res = {
               f"{CAP} arcs; test costs are exact. Both one-sided costs are computed per query on the "
               "evolving graph, so the improved cost is the cost of the chosen side. Baseline is deterministic "
               "(std 0); improved varies with LightGBM subsampling seeds 42-44. Answers verified identical. "
-              "cit-HepTh is a citation graph used as a stand-in for dependency graphs."),
+              "cit-HepTh is a citation graph used as a stand-in for dependency graphs. "
+              f"Data file was fetched from: {SRC} (same SNAP file; fallback mirrors are used only if the official host is unreachable)."),
 }
 with open("results.json", "w", encoding="utf-8") as f: json.dump(res, f, indent=2)
 import matplotlib; matplotlib.use("Agg"); import matplotlib.pyplot as plt
